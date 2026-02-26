@@ -1,44 +1,199 @@
----
-feature_name: Web Bluetooth / Device Info
-chrome_version: 45
-check_min_version: true
-feature_id: 5264933985976320
-icon_url: icon.png
-index: index.html
----
 
-{% include_relative _includes/intro.html %}
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Comando Pro BT</title>
+    <style>
+        :root {
+            --bg: #e0e5ec;
+            --shadow-light: rgba(255, 255, 255, 0.8);
+            --shadow-dark: rgba(163, 177, 198, 0.5);
+            --blue: #3b5bdb;
+            --red: #ff4757;
+            --accent: #00ff88;
+        }
 
-<p>This sample illustrates the use of the Web Bluetooth API to retrieve basic
-device information from a nearby Bluetooth Low Energy Device. You may want to
-check out the <a href="device-info-async-await.html">Device Info (Async
-Await)</a> sample.</p>
+        body {
+            background-color: var(--bg);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: sans-serif;
+            overflow: hidden;
+        }
 
-<form>
-  <label for="allDevices">All Devices</label>
-  <input id="allDevices" type="checkbox">
-  <input id="service" type="text" size=17 list="services" placeholder="Bluetooth Service">
-  <input id="name" type="text" size=17 placeholder="Device Name">
-  <input id="namePrefix" type="text" size=17 placeholder="Device Name Prefix">
-  <button>Get Bluetooth Device Info</button>
-</form>
+        #status {
+            margin-bottom: 15px;
+            font-size: 11px;
+            font-weight: bold;
+            color: #666;
+            text-align: center;
+            background: rgba(255,255,255,0.3);
+            padding: 5px 15px;
+            border-radius: 20px;
+        }
 
-{% include_relative _includes/datalist-services.html %}
+        .remote-container {
+            background: var(--bg);
+            padding: 25px;
+            border-radius: 50px;
+            box-shadow: 20px 20px 60px var(--shadow-dark), -20px -20px 60px var(--shadow-light);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+        }
 
-{% include output_helper.html %}
+        .top-row {
+            display: flex;
+            width: 100%;
+            justify-content: space-between;
+            gap: 10px;
+        }
 
-{% include js_snippet.html filename='device-info.js' %}
+        .btn {
+            background: var(--bg);
+            border: none;
+            border-radius: 15px;
+            box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: 0.1s;
+            color: #444;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn:active {
+            box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+            transform: scale(0.96);
+        }
+
+        .bt-main { padding: 12px 20px; color: var(--blue); font-size: 10px; font-weight: 900; }
+        .refresh { width: 45px; height: 45px; font-size: 20px; color: #666; }
+        .power { color: var(--red); width: 45px; height: 45px; font-size: 24px; }
+
+        .d-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 75px);
+            grid-template-rows: repeat(3, 75px);
+            gap: 15px;
+        }
+
+        .circle { border-radius: 50%; width: 75px; height: 75px; font-size: 24px; }
+        .ok-btn { border-radius: 50%; font-size: 16px; font-weight: bold; color: var(--blue); }
+
+        .vol-ch-section { display: flex; gap: 40px; }
+        .tall-btn { 
+            width: 60px; 
+            height: 120px; 
+            display: flex;
+            flex-direction: column; 
+            justify-content: space-around; 
+            font-size: 20px; 
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div id="status">AGUARDANDO BUSCA</div>
+
+<div class="remote-container">
+    <div class="top-row">
+        <button class="btn bt-main" onclick="conectarBT()">BUSCAR APARELHOS</button>
+        <button class="btn refresh" onclick="reiniciarBusca()">↻</button>
+        <button class="btn power" onclick="enviar('POWER')">⏻</button>
+    </div>
+
+    <div class="d-pad">
+        <div></div>
+        <button class="btn circle" onclick="enviar('UP')">▲</button>
+        <div></div>
+        <button class="btn circle" onclick="enviar('LEFT')">◀</button>
+        <button class="btn ok-btn" onclick="enviar('OK')">OK</button>
+        <button class="btn circle" onclick="enviar('RIGHT')">▶</button>
+        <div></div>
+        <button class="btn circle" onclick="enviar('DOWN')">▼</button>
+        <div></div>
+    </div>
+
+    <div class="vol-ch-section">
+        <div class="btn tall-btn">
+            <div onclick="enviar('VOL+')" style="padding:10px;">+</div>
+            <span style="font-size: 9px; color: #888;">VOL</span>
+            <div onclick="enviar('VOL-')" style="padding:10px;">-</div>
+        </div>
+        <div class="btn tall-btn">
+            <div onclick="enviar('CH+')" style="padding:10px;">∧</div>
+            <span style="font-size: 9px; color: #888;">CH</span>
+            <div onclick="enviar('CH-')" style="padding:10px;">∨</div>
+        </div>
+    </div>
+</div>
 
 <script>
-  document.querySelector('form').addEventListener('submit', function(event) {
-    event.stopPropagation();
-    event.preventDefault();
+    let device;
+    let charEscrita;
 
-    if (isWebBluetoothEnabled()) {
-      ChromeSamples.clearLog();
-      onButtonClick();
+    // UUIDs Universais (Compatíveis com TV Boxes e Celulares)
+    const SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb'; 
+    const CHAR_UUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+
+    async function reiniciarBusca() {
+        if (device && device.gatt.connected) {
+            await device.gatt.disconnect();
+        }
+        conectarBT();
     }
-  });
+
+    async function conectarBT() {
+        const log = document.getElementById('status');
+        try {
+            log.innerText = "PESQUISANDO NOMES...";
+            
+            // FILTRO ATUALIZADO: Força o Android a identificar os nomes reais
+            device = await navigator.bluetooth.requestDevice({
+                filters: [{ namePrefix: '' }], // Tenta capturar qualquer aparelho com nome ativo
+                optionalServices: [SERVICE_UUID]
+            });
+
+            log.innerText = "LIGANDO AO " + (device.name || "DISPOSITIVO");
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService(SERVICE_UUID);
+            charEscrita = await service.getCharacteristic(CHAR_UUID);
+
+            log.innerText = "CONECTADO: " + device.name.toUpperCase();
+            log.style.color = "var(--accent)";
+
+            device.addEventListener('gattserverdisconnected', () => {
+                log.innerText = "CONEXÃO PERDIDA";
+                log.style.color = "var(--red)";
+                charEscrita = null;
+            });
+
+        } catch (error) {
+            log.innerText = "NENHUM APARELHO SELECIONADO";
+            console.error(error);
+        }
+    }
+
+    async function enviar(cmd) {
+        if (!charEscrita) return;
+        try {
+            const encoder = new TextEncoder();
+            await charEscrita.writeValue(encoder.encode(cmd));
+        } catch (e) {
+            console.log("Falha no envio");
+        }
+    }
 </script>
 
-{% include_relative _includes/utils.html %}
+</body>
+</html>
